@@ -1,380 +1,505 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabaseClient';
 
-// Initialize Supabase
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
-
-// ============================================================================
-// AUTH SERVICE
-// ============================================================================
-
-export const authService = {
-  // Sign up with email and password
-  async signUp(email: string, password: string, username: string) {
-    try {
-      // 1. Create user in Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      if (authError || !authData.user) {
-        return {
-          success: false,
-          error: authError?.message || 'Sign up failed',
-        };
-      }
-
-      // 2. Create user profile in users table
-      const { error: profileError } = await supabase.from('users').insert({
-        id: authData.user.id,
-        email,
-        username,
-        created_at: new Date().toISOString(),
-      });
-
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        // Continue even if profile creation fails
-      }
-
-      return {
-        success: true,
-        user: authData.user,
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'An unexpected error occurred',
-      };
-    }
-  },
-
-  // Sign in with email and password
-  async signIn(email: string, password: string) {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error || !data.user) {
-        return {
-          success: false,
-          error: error?.message || 'Sign in failed',
-        };
-      }
-
-      return {
-        success: true,
-        user: data.user,
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'An unexpected error occurred',
-      };
-    }
-  },
-
-  // Get current user
-  async getCurrentUser() {
-    try {
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser();
-
-      if (error || !user) {
-        return null;
-      }
-
-      return user;
-    } catch (error) {
-      console.error('Get current user error:', error);
-      return null;
-    }
-  },
-
-  // Sign out
-  async signOut() {
-    try {
-      const { error } = await supabase.auth.signOut();
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      return { success: true };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'Sign out failed',
-      };
-    }
-  },
-
-  // Password reset
-  async resetPassword(email: string) {
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'lingualisten://reset-password',
-      });
-
-      if (error) {
-        return {
-          success: false,
-          error: error.message,
-        };
-      }
-
-      return { success: true };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'Password reset failed',
-      };
-    }
-  },
-};
-
-// ============================================================================
-// PHRASES SERVICE
-// ============================================================================
-
+/**
+ * Phrases Service - Handle all phrase-related operations
+ */
 export const phrasesService = {
-  // Get a single phrase by ID
-  async getPhrase(id: string) {
-    try {
-      const { data, error } = await supabase
-        .from('phrases')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('Get phrase error:', error);
-      return null;
-    }
-  },
-
-  // Get all phrases
+  /**
+   * Get all phrases from Supabase
+   */
   async getAllPhrases() {
     try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('phrases')
         .select('*')
-        .order('code', { ascending: true });
+        .order('category', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching phrases:', error);
+        return [];
+      }
+
       return data || [];
     } catch (error) {
-      console.error('Get all phrases error:', error);
+      console.error('Phrases service error:', error);
       return [];
     }
   },
 
-  // Get phrases by category
+  /**
+   * Get phrase by ID
+   */
+  async getPhraseById(phraseId: string) {
+    try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return null;
+      }
+
+      const { data, error } = await supabase
+        .from('phrases')
+        .select('*')
+        .eq('id', phraseId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching phrase:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Phrase fetch error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Search phrases by text
+   */
+  async searchPhrases(query: string) {
+    try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return [];
+      }
+
+      const { data, error } = await supabase
+        .from('phrases')
+        .select('*')
+        .or(
+          `phrase.ilike.%${query}%,translation.ilike.%${query}%`
+        )
+        .order('category', { ascending: true });
+
+      if (error) {
+        console.error('Error searching phrases:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Search error:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Get phrases by category
+   */
   async getPhrasesByCategory(category: string) {
     try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('phrases')
         .select('*')
         .eq('category', category)
-        .order('code', { ascending: true });
+        .order('phrase');
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching phrases by category:', error);
+        return [];
+      }
+
       return data || [];
     } catch (error) {
-      console.error('Get phrases by category error:', error);
+      console.error('Category fetch error:', error);
       return [];
     }
   },
 
-  // Search phrases
-  async searchPhrases(query: string) {
+  /**
+   * Get all unique categories
+   */
+  async getCategories() {
     try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return [];
+      }
+
+      // Get all phrases and extract unique categories
+      const { data, error } = await supabase
+        .from('phrases')
+        .select('category');
+
+      if (error) {
+        console.error('Error fetching categories:', error);
+        return [];
+      }
+
+      // Extract unique categories and sort
+      const uniqueCategories = Array.from(new Set(
+        data?.map((item: any) => item.category).filter(Boolean) || []
+      )).sort();
+
+      return uniqueCategories;
+    } catch (error) {
+      console.error('Categories fetch error:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Get random phrases (for home screen featured section)
+   */
+  async getRandomPhrases(limit = 5) {
+    try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('phrases')
         .select('*')
-        .or(`phrase.ilike.%${query}%,translation.ilike.%${query}%`);
+        .limit(limit);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching random phrases:', error);
+        return [];
+      }
+
       return data || [];
     } catch (error) {
-      console.error('Search phrases error:', error);
+      console.error('Random phrases error:', error);
       return [];
     }
   },
 };
 
-// ============================================================================
-// USER ACTIVITY SERVICE
-// ============================================================================
-
-export const userActivityService = {
-  // Log user activity
-  async logActivity(userId: string, phraseId: string, activityData: any) {
-    try {
-      const { data, error } = await supabase
-        .from('user_activity')
-        .insert({
-          user_id: userId,
-          phrase_id: phraseId,
-          ...activityData,
-          created_at: new Date().toISOString(),
-        })
-        .select();
-
-      if (error) throw error;
-      return data?.[0] || null;
-    } catch (error) {
-      console.error('Log activity error:', error);
-      return null;
-    }
-  },
-
-  // Get user activity
-  async getUserActivity(userId: string) {
-    try {
-      const { data, error } = await supabase
-        .from('user_activity')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error('Get user activity error:', error);
-      return [];
-    }
-  },
-};
-
-// ============================================================================
-// VOICE PRACTICE SERVICE
-// ============================================================================
-
-export const voicePracticeService = {
-  // Save voice practice
-  async savePractice(userId: string, phraseId: string, practiceData: any) {
-    try {
-      const { data, error } = await supabase
-        .from('voice_practices')
-        .insert({
-          user_id: userId,
-          phrase_id: phraseId,
-          ...practiceData,
-          created_at: new Date().toISOString(),
-        })
-        .select();
-
-      if (error) throw error;
-      return data?.[0] || null;
-    } catch (error) {
-      console.error('Save voice practice error:', error);
-      return null;
-    }
-  },
-
-  // Get user voice practices
-  async getUserPractices(userId: string) {
-    try {
-      const { data, error } = await supabase
-        .from('voice_practices')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error('Get user practices error:', error);
-      return [];
-    }
-  },
-};
-
-// ============================================================================
-// AI CONVERSATION SERVICE
-// ============================================================================
-
-export const aiConversationService = {
-  // Create a new conversation
-  async createConversation(userId: string, phraseId: string) {
-    try {
-      const { data, error } = await supabase
-        .from('ai_conversations')
-        .insert({
-          user_id: userId,
-          phrase_id: phraseId,
-          created_at: new Date().toISOString(),
-        })
-        .select();
-
-      if (error) throw error;
-      return data?.[0] || null;
-    } catch (error) {
-      console.error('Create conversation error:', error);
-      return null;
-    }
-  },
-
-  // Add message to conversation
-  async addMessage(
-    conversationId: string,
-    sender: 'user' | 'ai',
-    content: string
+/**
+ * Learned Phrases Service - Handle user progress tracking
+ */
+export const learnedPhrasesService = {
+  /**
+   * Mark a phrase as practiced/learned by user
+   * Creates new record or updates existing one
+   */
+  async markPhrasePracticed(
+    userId: string,
+    phraseId: string,
+    accuracyScore: number = 0
   ) {
     try {
-      const { data, error } = await supabase
-        .from('ai_messages')
-        .insert({
-          conversation_id: conversationId,
-          sender,
-          content,
-          created_at: new Date().toISOString(),
-        })
-        .select();
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return null;
+      }
 
-      if (error) throw error;
-      return data?.[0] || null;
+      // First, try to fetch existing record
+      const { data: existing, error: fetchError } = await supabase
+        .from('learned_phrases')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('phrase_id', phraseId)
+        .single();
+
+      if (existing) {
+        // Update existing record
+        const newAccuracy =
+          (existing.accuracy_score + accuracyScore) / 2;
+
+        const { data, error } = await supabase
+          .from('learned_phrases')
+          .update({
+            practice_count: existing.practice_count + 1,
+            accuracy_score: newAccuracy,
+            last_practiced: new Date().toISOString(),
+          })
+          .eq('user_id', userId)
+          .eq('phrase_id', phraseId)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Error updating learned phrase:', error);
+          return null;
+        }
+        return data;
+      } else {
+        // Create new record
+        const { data, error } = await supabase
+          .from('learned_phrases')
+          .insert({
+            user_id: userId,
+            phrase_id: phraseId,
+            practice_count: 1,
+            accuracy_score: accuracyScore,
+            last_practiced: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Error creating learned phrase:', error);
+          return null;
+        }
+        return data;
+      }
     } catch (error) {
-      console.error('Add message error:', error);
+      console.error('Mark practice error:', error);
       return null;
     }
   },
 
-  // Get conversation messages
-  async getMessages(conversationId: string) {
+  /**
+   * Get all learned phrases for a user (with phrase details)
+   */
+  async getUserLearnedPhrases(userId: string) {
     try {
-      const { data, error } = await supabase
-        .from('ai_messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return [];
+      }
 
-      if (error) throw error;
+      const { data, error } = await supabase
+        .from('learned_phrases')
+        .select('*, phrases(*)')
+        .eq('user_id', userId)
+        .order('last_practiced', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching learned phrases:', error);
+        return [];
+      }
+
       return data || [];
     } catch (error) {
-      console.error('Get messages error:', error);
+      console.error('Learned phrases error:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Get mastered phrases for a user
+   */
+  async getUserMasteredPhrases(userId: string) {
+    try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return [];
+      }
+
+      const { data, error } = await supabase
+        .from('learned_phrases')
+        .select('*, phrases(*)')
+        .eq('user_id', userId)
+        .eq('is_mastered', true)
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching mastered phrases:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Mastered phrases error:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Mark a phrase as mastered
+   */
+  async markPhraseMastered(userId: string, phraseId: string) {
+    try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return null;
+      }
+
+      const { data, error } = await supabase
+        .from('learned_phrases')
+        .update({
+          is_mastered: true,
+        })
+        .eq('user_id', userId)
+        .eq('phrase_id', phraseId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error marking mastered:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Mark mastered error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get comprehensive user statistics
+   */
+  async getUserStats(userId: string) {
+    try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return {
+          totalPhrasesPracticed: 0,
+          masteredPhrases: 0,
+          averageAccuracy: 0,
+          totalPracticeAttempts: 0,
+        };
+      }
+
+      const { data, error } = await supabase
+        .from('learned_phrases')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error fetching stats:', error);
+        return {
+          totalPhrasesPracticed: 0,
+          masteredPhrases: 0,
+          averageAccuracy: 0,
+          totalPracticeAttempts: 0,
+        };
+      }
+
+      const phrases = data || [];
+      const totalPhrasesPracticed = phrases.length;
+      const masteredPhrases = phrases.filter((p: any) => p.is_mastered).length;
+      const totalPracticeAttempts = phrases.reduce(
+        (sum: number, p: any) => sum + (p.practice_count || 0),
+        0
+      );
+      const averageAccuracy =
+        phrases.length > 0
+          ? Math.round(
+              phrases.reduce((sum: number, p: any) => sum + (p.accuracy_score || 0), 0) /
+                phrases.length
+            )
+          : 0;
+
+      return {
+        totalPhrasesPracticed,
+        masteredPhrases,
+        averageAccuracy,
+        totalPracticeAttempts,
+      };
+    } catch (error) {
+      console.error('Stats error:', error);
+      return {
+        totalPhrasesPracticed: 0,
+        masteredPhrases: 0,
+        averageAccuracy: 0,
+        totalPracticeAttempts: 0,
+      };
+    }
+  },
+
+  /**
+   * Get recently practiced phrases for a user
+   */
+  async getRecentlyPracticed(userId: string, limit: number = 10) {
+    try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return [];
+      }
+
+      const { data, error } = await supabase
+        .from('learned_phrases')
+        .select('*, phrases(*)')
+        .eq('user_id', userId)
+        .order('last_practiced', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error('Error fetching recently practiced:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Recently practiced error:', error);
       return [];
     }
   },
 };
 
-export default supabase;
+/**
+ * Activity Service - Track user interactions
+ */
+export const activityService = {
+  /**
+   * Log user activity
+   */
+  async logActivity(
+    userId: string,
+    activityType: 'view' | 'practice' | 'complete',
+    phraseId?: string
+  ) {
+    try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return false;
+      }
+
+      const { error } = await supabase
+        .from('recent_activity')
+        .insert({
+          user_id: userId,
+          activity_type: activityType,
+          phrase_id: phraseId || null,
+        });
+
+      if (error) {
+        console.error('Error logging activity:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Activity log error:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Get recent activity for user
+   */
+  async getRecentActivity(userId: string, limit: number = 20) {
+    try {
+      if (!supabase) {
+        console.error('Supabase client not initialized');
+        return [];
+      }
+
+      const { data, error } = await supabase
+        .from('recent_activity')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error('Error fetching activity:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Recent activity error:', error);
+      return [];
+    }
+  },
+};
+
+// EXPORT THE SUPABASE CLIENT SO IT CAN BE IMPORTED BY AuthContext
+export { supabase };

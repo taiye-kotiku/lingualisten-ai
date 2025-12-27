@@ -6,211 +6,239 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Animated,
+  SafeAreaView,
+  RefreshControl,
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
+import { learnedPhrasesService } from '../../services/supabase.service';
 
-interface FeedbackData {
-  accuracy: number;
-  toneScore: number;
-  feedback: string;
-  suggestions: string[];
+interface UserStats {
+  totalPhrasesPracticed: number;
+  masteredPhrases: number;
+  averageAccuracy: number;
+  totalPracticeAttempts: number;
 }
 
 /**
- * VoicePracticeFeedback - Shows pronunciation feedback and practice results
- * Displays accuracy scores, tone feedback, and improvement suggestions
+ * ProfileScreen - Display user profile and learning statistics
  */
-export default function VoicePracticeFeedback({ route, navigation }: any) {
+export default function ProfileScreen() {
   const { user } = useAuth();
-  const { phraseId, phraseName = 'Practice' } = route?.params || {};
-
-  const [feedbackData, setFeedbackData] = useState<FeedbackData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [scaleAnim] = useState(new Animated.Value(0));
+  const [stats, setStats] = useState<UserStats>({
+    totalPhrasesPracticed: 0,
+    masteredPhrases: 0,
+    averageAccuracy: 0,
+    totalPracticeAttempts: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    // Set navigation title
-    navigation.setOptions({
-      title: 'Practice Results',
-    });
+    loadStats();
+  }, [user]);
 
-    // Simulate loading feedback data
-    loadFeedback();
-  }, []);
+  const loadStats = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-  const loadFeedback = async () => {
     try {
       setLoading(true);
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Mock feedback data
-      const mockFeedback: FeedbackData = {
-        accuracy: 85,
-        toneScore: 78,
-        feedback: 'Good pronunciation! Your accent is clear and easy to understand.',
-        suggestions: [
-          'Pay attention to the rising tone at the end',
-          'Emphasize the vowel sound in the middle',
-          'Try slowing down slightly for clarity',
-        ],
-      };
-
-      setFeedbackData(mockFeedback);
-
-      // Animate score in
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-      }).start();
+      const userStats = await learnedPhrasesService.getUserStats(user.id);
+      setStats(userStats);
     } catch (error) {
-      console.error('Load feedback error:', error);
+      console.error('Error loading stats:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePracticeAgain = () => {
-    // Reset and practice again
-    setFeedbackData(null);
-    setLoading(true);
-    loadFeedback();
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadStats();
+    setRefreshing(false);
   };
 
-  const handleNext = () => {
-    navigation.goBack();
+  const handleSignOut = async () => {
+    // Note: Check your AuthContext for the correct logout/signOut method
+    // If your context exports logout(), use that instead
+    try {
+      console.log('Sign out requested');
+      // Example: if your context has it: await logout();
+      // For now, this is a placeholder
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
   };
 
-  if (loading || !feedbackData) {
+  if (!user) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#A855F7" />
-        <Text style={styles.loadingText}>Analyzing your pronunciation...</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centerContent}>
+          <Text style={styles.noUserText}>Please log in to see your profile</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  const getAccuracyColor = (accuracy: number) => {
-    if (accuracy >= 85) return '#10B981';
-    if (accuracy >= 70) return '#F59E0B';
-    return '#EF4444';
-  };
-
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{phraseName}</Text>
-        <View style={styles.spacer} />
-      </View>
-
-      {/* Feedback Content */}
-      <View style={styles.content}>
-        {/* Phrase Being Practiced */}
-        <View style={styles.phraseCard}>
-          <Text style={styles.phraseLabel}>Phrase Practiced</Text>
-          <Text style={styles.phraseValue}>{phraseName}</Text>
-        </View>
-
-        {/* Accuracy Score */}
-        <Animated.View
-          style={[
-            styles.scoreCard,
-            { transform: [{ scale: scaleAnim }] },
-          ]}
-        >
-          <View style={styles.scoreCircle}>
-            <Text
-              style={[
-                styles.scoreValue,
-                { color: getAccuracyColor(feedbackData.accuracy) },
-              ]}
-            >
-              {feedbackData.accuracy}%
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {/* Profile Header */}
+        <View style={styles.header}>
+          <View style={styles.avatarContainer}>
+            <Text style={styles.avatar}>👤</Text>
+          </View>
+          <View style={styles.userInfo}>
+            <Text style={styles.userName}>
+              {user.user_metadata?.full_name || user.email || 'Yoruba Learner'}
             </Text>
-            <Text style={styles.scoreLabel}>Accuracy</Text>
+            <Text style={styles.userEmail}>{user.email}</Text>
           </View>
-          <View style={styles.scoreDetails}>
-            <View style={styles.scoreRow}>
-              <Text style={styles.scoreRowLabel}>Pronunciation</Text>
-              <View style={styles.scoreBar}>
-                <View
-                  style={[
-                    styles.scoreBarFill,
-                    {
-                      width: `${feedbackData.accuracy}%`,
-                      backgroundColor: getAccuracyColor(feedbackData.accuracy),
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.scoreRowValue}>{feedbackData.accuracy}%</Text>
-            </View>
-            <View style={styles.scoreRow}>
-              <Text style={styles.scoreRowLabel}>Tone</Text>
-              <View style={styles.scoreBar}>
-                <View
-                  style={[
-                    styles.scoreBarFill,
-                    {
-                      width: `${feedbackData.toneScore}%`,
-                      backgroundColor: getAccuracyColor(feedbackData.toneScore),
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.scoreRowValue}>{feedbackData.toneScore}%</Text>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Feedback Message */}
-        <View style={styles.feedbackCard}>
-          <Text style={styles.feedbackLabel}>Feedback</Text>
-          <Text style={styles.feedbackText}>{feedbackData.feedback}</Text>
         </View>
 
-        {/* Suggestions */}
-        {feedbackData.suggestions.length > 0 && (
-          <View style={styles.suggestionsCard}>
-            <Text style={styles.suggestionsLabel}>💡 Tips for Improvement</Text>
-            {feedbackData.suggestions.map((suggestion, index) => (
-              <View key={index} style={styles.suggestionItem}>
-                <Text style={styles.suggestionNumber}>{index + 1}</Text>
-                <Text style={styles.suggestionText}>{suggestion}</Text>
+        {/* Statistics Section */}
+        <View style={styles.statsSection}>
+          <Text style={styles.sectionTitle}>Your Progress</Text>
+
+          {loading ? (
+            <ActivityIndicator size="large" color="#A855F7" />
+          ) : (
+            <>
+              {/* Stats Cards Grid */}
+              <View style={styles.statsGrid}>
+                {/* Card 1: Total Practiced */}
+                <View style={[styles.statCard, styles.statCard1]}>
+                  <Text style={styles.statIcon}>📚</Text>
+                  <Text style={styles.statValue}>{stats.totalPhrasesPracticed}</Text>
+                  <Text style={styles.statLabel}>Phrases Practiced</Text>
+                </View>
+
+                {/* Card 2: Mastered */}
+                <View style={[styles.statCard, styles.statCard2]}>
+                  <Text style={styles.statIcon}>⭐</Text>
+                  <Text style={styles.statValue}>{stats.masteredPhrases}</Text>
+                  <Text style={styles.statLabel}>Mastered</Text>
+                </View>
+
+                {/* Card 3: Average Accuracy */}
+                <View style={[styles.statCard, styles.statCard3]}>
+                  <Text style={styles.statIcon}>🎯</Text>
+                  <Text style={styles.statValue}>{stats.averageAccuracy}%</Text>
+                  <Text style={styles.statLabel}>Avg. Accuracy</Text>
+                </View>
+
+                {/* Card 4: Total Attempts */}
+                <View style={[styles.statCard, styles.statCard4]}>
+                  <Text style={styles.statIcon}>🔄</Text>
+                  <Text style={styles.statValue}>{stats.totalPracticeAttempts}</Text>
+                  <Text style={styles.statLabel}>Total Attempts</Text>
+                </View>
               </View>
-            ))}
-          </View>
-        )}
 
-        {/* Action Buttons */}
+              {/* Achievement Section */}
+              <View style={styles.achievementSection}>
+                <Text style={styles.achievementTitle}>Achievements</Text>
+
+                {stats.totalPhrasesPracticed >= 5 && (
+                  <View style={styles.achievementItem}>
+                    <Text style={styles.achievementEmoji}>🌟</Text>
+                    <View style={styles.achievementContent}>
+                      <Text style={styles.achievementName}>Getting Started</Text>
+                      <Text style={styles.achievementDesc}>
+                        Practiced 5 phrases
+                      </Text>
+                    </View>
+                    <Text style={styles.checkmark}>✓</Text>
+                  </View>
+                )}
+
+                {stats.totalPhrasesPracticed >= 10 && (
+                  <View style={styles.achievementItem}>
+                    <Text style={styles.achievementEmoji}>🔥</Text>
+                    <View style={styles.achievementContent}>
+                      <Text style={styles.achievementName}>On Fire</Text>
+                      <Text style={styles.achievementDesc}>
+                        Practiced 10 phrases
+                      </Text>
+                    </View>
+                    <Text style={styles.checkmark}>✓</Text>
+                  </View>
+                )}
+
+                {stats.masteredPhrases >= 5 && (
+                  <View style={styles.achievementItem}>
+                    <Text style={styles.achievementEmoji}>👑</Text>
+                    <View style={styles.achievementContent}>
+                      <Text style={styles.achievementName}>Master</Text>
+                      <Text style={styles.achievementDesc}>
+                        Mastered 5 phrases
+                      </Text>
+                    </View>
+                    <Text style={styles.checkmark}>✓</Text>
+                  </View>
+                )}
+
+                {stats.averageAccuracy >= 80 && (
+                  <View style={styles.achievementItem}>
+                    <Text style={styles.achievementEmoji}>🎤</Text>
+                    <View style={styles.achievementContent}>
+                      <Text style={styles.achievementName}>Great Speaker</Text>
+                      <Text style={styles.achievementDesc}>
+                        80%+ average accuracy
+                      </Text>
+                    </View>
+                    <Text style={styles.checkmark}>✓</Text>
+                  </View>
+                )}
+
+                {stats.totalPhrasesPracticed === 0 && (
+                  <View style={styles.noAchievements}>
+                    <Text style={styles.noAchievementsText}>
+                      Start practicing phrases to unlock achievements! 🚀
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Settings Section */}
+        <View style={styles.settingsSection}>
+          <Text style={styles.sectionTitle}>Settings</Text>
+
+          <TouchableOpacity style={styles.settingItem}>
+            <Text style={styles.settingLabel}>🌐 Language</Text>
+            <Text style={styles.settingValue}>Yoruba</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.settingItem}>
+            <Text style={styles.settingLabel}>🔔 Notifications</Text>
+            <Text style={styles.settingValue}>Enabled</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.settingItem}>
+            <Text style={styles.settingLabel}>📧 Email</Text>
+            <Text style={styles.settingValue}>{user.email}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Sign Out Button */}
         <TouchableOpacity
-          style={styles.practiceButton}
-          onPress={handlePracticeAgain}
-          activeOpacity={0.8}
+          style={styles.signOutButton}
+          onPress={handleSignOut}
         >
-          <Text style={styles.practiceButtonText}>🎤 Practice Again</Text>
+          <Text style={styles.signOutButtonText}>Sign Out</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.nextButton}
-          onPress={handleNext}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.nextButtonText}>→ Next Phrase</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Footer Padding */}
-      <View style={styles.footer} />
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -219,206 +247,189 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  loadingContainer: {
+  centerContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#F3E8FF',
+    marginBottom: 32,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E9D5FF',
+    borderBottomColor: '#E5E7EB',
   },
-  backButton: {
-    paddingRight: 12,
+  avatarContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F3E8FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
   },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#A855F7',
+  avatar: {
+    fontSize: 32,
   },
-  headerTitle: {
+  userInfo: {
     flex: 1,
+  },
+  userName: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginLeft: 8,
-  },
-  spacer: {
-    width: 40,
-  },
-  content: {
-    padding: 16,
-  },
-  phraseCard: {
-    backgroundColor: '#F9FAFB',
-    borderLeftWidth: 4,
-    borderLeftColor: '#A855F7',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-  },
-  phraseLabel: {
-    fontSize: 11,
     fontWeight: '700',
-    color: '#6B7280',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    color: '#1F2937',
+    marginBottom: 4,
   },
-  phraseValue: {
+  userEmail: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  statsSection: {
+    marginBottom: 32,
+  },
+  sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  scoreCard: {
-    backgroundColor: '#F0F9FF',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: '#E0F2FE',
-  },
-  scoreCircle: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  scoreValue: {
-    fontSize: 48,
     fontWeight: '700',
-    marginBottom: 4,
-  },
-  scoreLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  scoreDetails: {
-    width: '100%',
-  },
-  scoreRow: {
-    marginBottom: 16,
-  },
-  scoreRowLabel: {
-    fontSize: 13,
-    fontWeight: '600',
     color: '#1F2937',
-    marginBottom: 6,
-  },
-  scoreBar: {
-    height: 8,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 4,
-  },
-  scoreBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  scoreRowValue: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  feedbackCard: {
-    backgroundColor: '#FFFBEB',
-    borderLeftWidth: 4,
-    borderLeftColor: '#F59E0B',
-    borderRadius: 8,
-    padding: 16,
     marginBottom: 16,
   },
-  feedbackLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#92400E',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  feedbackText: {
-    fontSize: 14,
-    color: '#1F2937',
-    lineHeight: 20,
-  },
-  suggestionsCard: {
-    backgroundColor: '#F0FDF4',
-    borderLeftWidth: 4,
-    borderLeftColor: '#10B981',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-  },
-  suggestionsLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#047857',
-    marginBottom: 12,
-  },
-  suggestionItem: {
+  statsGrid: {
     flexDirection: 'row',
-    marginBottom: 10,
+    flexWrap: 'wrap',
+    gap: 12,
   },
-  suggestionNumber: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#10B981',
-    marginRight: 12,
-    minWidth: 24,
-  },
-  suggestionText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#1F2937',
-    lineHeight: 18,
-  },
-  practiceButton: {
-    backgroundColor: '#A855F7',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+  statCard: {
+    width: '48%',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 12,
-    shadowColor: '#A855F7',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  practiceButtonText: {
-    color: '#FFFFFF',
+  statCard1: {
+    backgroundColor: '#EDE9FE',
+  },
+  statCard2: {
+    backgroundColor: '#FEF3C7',
+  },
+  statCard3: {
+    backgroundColor: '#DBEAFE',
+  },
+  statCard4: {
+    backgroundColor: '#D1FAE5',
+  },
+  statIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  statValue: {
+    fontSize: 24,
     fontWeight: '700',
-    fontSize: 15,
-    letterSpacing: 0.3,
+    color: '#1F2937',
+    marginBottom: 4,
   },
-  nextButton: {
-    backgroundColor: '#E9D5FF',
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  achievementSection: {
+    marginTop: 24,
+  },
+  achievementTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  achievementItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#A855F7',
+  },
+  achievementEmoji: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  achievementContent: {
+    flex: 1,
+  },
+  achievementName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  achievementDesc: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  checkmark: {
+    fontSize: 18,
+    color: '#10b981',
+    fontWeight: '700',
+  },
+  noAchievements: {
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  noAchievementsText: {
+    fontSize: 14,
+    color: '#92400E',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  settingsSection: {
+    marginBottom: 24,
+  },
+  settingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 6,
+  },
+  settingLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1F2937',
+  },
+  settingValue: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  signOutButton: {
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 6,
     alignItems: 'center',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#D8B4FE',
+    marginBottom: 32,
   },
-  nextButtonText: {
-    color: '#7C3AED',
-    fontWeight: '600',
+  signOutButtonText: {
     fontSize: 14,
+    fontWeight: '600',
+    color: '#DC2626',
   },
-  footer: {
-    height: 40,
+  noUserText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 });

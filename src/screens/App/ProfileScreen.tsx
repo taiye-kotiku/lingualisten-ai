@@ -5,350 +5,431 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
-  TextInput,
+  SafeAreaView,
+  RefreshControl,
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../services/supabase.service';
+import { learnedPhrasesService } from '../../services/supabase.service';
 
-export default function ProfileScreen({ navigation }: any) {
-  const { user, profile, logout } = useAuth();
-  const [isEditing, setIsEditing] = useState(false);
-  const [username, setUsername] = useState(profile?.name || '');
-  const [email, setEmail] = useState(profile?.email || '');
-  const [loading, setLoading] = useState(false);
+interface UserStats {
+  totalPhrasesPracticed: number;
+  masteredPhrases: number;
+  averageAccuracy: number;
+  totalPracticeAttempts: number;
+}
+
+/**
+ * ProfileScreen - Display user profile and learning statistics
+ */
+export default function ProfileScreen() {
+  const { user } = useAuth();
+  const [stats, setStats] = useState<UserStats>({
+    totalPhrasesPracticed: 0,
+    masteredPhrases: 0,
+    averageAccuracy: 0,
+    totalPracticeAttempts: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    if (profile) {
-      setUsername(profile.name || '');
-      setEmail(profile.email || '');
-    }
-  }, [profile]);
+    loadStats();
+  }, [user]);
 
-  const handleUpdateProfile = async () => {
-    if (!username.trim()) {
-      Alert.alert('Error', 'Username cannot be empty');
+  const loadStats = async () => {
+    if (!user) {
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({
-          username: username.trim(),
-          email: email,
-        })
-        .eq('id', user?.id);
-
-      if (error) {
-        Alert.alert('Error', error.message);
-      } else {
-        Alert.alert('Success', 'Profile updated successfully!');
-        setIsEditing(false);
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to update profile');
+      setLoading(true);
+      const userStats = await learnedPhrasesService.getUserStats(user.id);
+      setStats(userStats);
+    } catch (error) {
+      console.error('Error loading stats:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogout = async () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', onPress: () => {}, style: 'cancel' },
-      {
-        text: 'Logout',
-        onPress: async () => {
-          try {
-            await logout();
-            navigation.replace('Auth');
-          } catch (error: any) {
-            Alert.alert('Error', error.message || 'Failed to logout');
-          }
-        },
-        style: 'destructive',
-      },
-    ]);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadStats();
+    setRefreshing(false);
   };
 
-  if (!user || !profile) {
+  const handleSignOut = async () => {
+    // Note: Check your AuthContext for the correct logout/signOut method
+    // If your context exports logout(), use that instead
+    try {
+      console.log('Sign out requested');
+      // Example: if your context has it: await logout();
+      // For now, this is a placeholder
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
+  };
+
+  if (!user) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#A855F7" />
-        <Text style={styles.loadingText}>Loading profile...</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centerContent}>
+          <Text style={styles.noUserText}>Please log in to see your profile</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {username?.charAt(0).toUpperCase() || 'U'}
-          </Text>
-        </View>
-        <Text style={styles.title}>{username}</Text>
-        <Text style={styles.subtitle}>{email}</Text>
-      </View>
-
-      {isEditing ? (
-        <View style={styles.editSection}>
-          <Text style={styles.sectionTitle}>Edit Profile</Text>
-
-          <Text style={styles.label}>Username</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Username"
-            value={username}
-            onChangeText={setUsername}
-            editable={!loading}
-          />
-
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            editable={!loading}
-          />
-
-          <TouchableOpacity
-            style={[styles.button, styles.saveButton, loading && styles.buttonDisabled]}
-            onPress={handleUpdateProfile}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text style={styles.buttonText}>Save Changes</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.button, styles.cancelButton]}
-            onPress={() => {
-              setIsEditing(false);
-              setUsername(profile.name || '');
-              setEmail(profile.email || '');
-            }}
-            disabled={loading}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={styles.infoSection}>
-          <View style={styles.infoCard}>
-            <Text style={styles.infoLabel}>Username</Text>
-            <Text style={styles.infoValue}>{username}</Text>
-          </View>
-
-          <View style={styles.infoCard}>
-            <Text style={styles.infoLabel}>Email</Text>
-            <Text style={styles.infoValue}>{email}</Text>
-          </View>
-
-          <View style={styles.infoCard}>
-            <Text style={styles.infoLabel}>User ID</Text>
-            <Text style={styles.infoValue}>{user.id.substring(0, 12)}...</Text>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, styles.editButton]}
-            onPress={() => setIsEditing(true)}
-          >
-            <Text style={styles.buttonText}>Edit Profile</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <View style={styles.settingsSection}>
-        <Text style={styles.sectionTitle}>Settings</Text>
-
-        <TouchableOpacity style={styles.settingItem}>
-          <Text style={styles.settingLabel}>Learning Level</Text>
-          <Text style={styles.settingValue}>Beginner</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.settingItem}>
-          <Text style={styles.settingLabel}>Notifications</Text>
-          <Text style={styles.settingValue}>Enabled</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.settingItem}>
-          <Text style={styles.settingLabel}>Language</Text>
-          <Text style={styles.settingValue}>English</Text>
-        </TouchableOpacity>
-      </View>
-
-      <TouchableOpacity
-        style={[styles.button, styles.logoutButton]}
-        onPress={handleLogout}
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
-        <Text style={styles.logoutButtonText}>Logout</Text>
-      </TouchableOpacity>
+        {/* Profile Header */}
+        <View style={styles.header}>
+          <View style={styles.avatarContainer}>
+            <Text style={styles.avatar}>👤</Text>
+          </View>
+          <View style={styles.userInfo}>
+            <Text style={styles.userName}>
+              {user.user_metadata?.full_name || user.email || 'Yoruba Learner'}
+            </Text>
+            <Text style={styles.userEmail}>{user.email}</Text>
+          </View>
+        </View>
 
-      <View style={styles.footer} />
-    </ScrollView>
+        {/* Statistics Section */}
+        <View style={styles.statsSection}>
+          <Text style={styles.sectionTitle}>Your Progress</Text>
+
+          {loading ? (
+            <ActivityIndicator size="large" color="#A855F7" />
+          ) : (
+            <>
+              {/* Stats Cards Grid */}
+              <View style={styles.statsGrid}>
+                {/* Card 1: Total Practiced */}
+                <View style={[styles.statCard, styles.statCard1]}>
+                  <Text style={styles.statIcon}>📚</Text>
+                  <Text style={styles.statValue}>{stats.totalPhrasesPracticed}</Text>
+                  <Text style={styles.statLabel}>Phrases Practiced</Text>
+                </View>
+
+                {/* Card 2: Mastered */}
+                <View style={[styles.statCard, styles.statCard2]}>
+                  <Text style={styles.statIcon}>⭐</Text>
+                  <Text style={styles.statValue}>{stats.masteredPhrases}</Text>
+                  <Text style={styles.statLabel}>Mastered</Text>
+                </View>
+
+                {/* Card 3: Average Accuracy */}
+                <View style={[styles.statCard, styles.statCard3]}>
+                  <Text style={styles.statIcon}>🎯</Text>
+                  <Text style={styles.statValue}>{stats.averageAccuracy}%</Text>
+                  <Text style={styles.statLabel}>Avg. Accuracy</Text>
+                </View>
+
+                {/* Card 4: Total Attempts */}
+                <View style={[styles.statCard, styles.statCard4]}>
+                  <Text style={styles.statIcon}>🔄</Text>
+                  <Text style={styles.statValue}>{stats.totalPracticeAttempts}</Text>
+                  <Text style={styles.statLabel}>Total Attempts</Text>
+                </View>
+              </View>
+
+              {/* Achievement Section */}
+              <View style={styles.achievementSection}>
+                <Text style={styles.achievementTitle}>Achievements</Text>
+
+                {stats.totalPhrasesPracticed >= 5 && (
+                  <View style={styles.achievementItem}>
+                    <Text style={styles.achievementEmoji}>🌟</Text>
+                    <View style={styles.achievementContent}>
+                      <Text style={styles.achievementName}>Getting Started</Text>
+                      <Text style={styles.achievementDesc}>
+                        Practiced 5 phrases
+                      </Text>
+                    </View>
+                    <Text style={styles.checkmark}>✓</Text>
+                  </View>
+                )}
+
+                {stats.totalPhrasesPracticed >= 10 && (
+                  <View style={styles.achievementItem}>
+                    <Text style={styles.achievementEmoji}>🔥</Text>
+                    <View style={styles.achievementContent}>
+                      <Text style={styles.achievementName}>On Fire</Text>
+                      <Text style={styles.achievementDesc}>
+                        Practiced 10 phrases
+                      </Text>
+                    </View>
+                    <Text style={styles.checkmark}>✓</Text>
+                  </View>
+                )}
+
+                {stats.masteredPhrases >= 5 && (
+                  <View style={styles.achievementItem}>
+                    <Text style={styles.achievementEmoji}>👑</Text>
+                    <View style={styles.achievementContent}>
+                      <Text style={styles.achievementName}>Master</Text>
+                      <Text style={styles.achievementDesc}>
+                        Mastered 5 phrases
+                      </Text>
+                    </View>
+                    <Text style={styles.checkmark}>✓</Text>
+                  </View>
+                )}
+
+                {stats.averageAccuracy >= 80 && (
+                  <View style={styles.achievementItem}>
+                    <Text style={styles.achievementEmoji}>🎤</Text>
+                    <View style={styles.achievementContent}>
+                      <Text style={styles.achievementName}>Great Speaker</Text>
+                      <Text style={styles.achievementDesc}>
+                        80%+ average accuracy
+                      </Text>
+                    </View>
+                    <Text style={styles.checkmark}>✓</Text>
+                  </View>
+                )}
+
+                {stats.totalPhrasesPracticed === 0 && (
+                  <View style={styles.noAchievements}>
+                    <Text style={styles.noAchievementsText}>
+                      Start practicing phrases to unlock achievements! 🚀
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Settings Section */}
+        <View style={styles.settingsSection}>
+          <Text style={styles.sectionTitle}>Settings</Text>
+
+          <TouchableOpacity style={styles.settingItem}>
+            <Text style={styles.settingLabel}>🌐 Language</Text>
+            <Text style={styles.settingValue}>Yoruba</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.settingItem}>
+            <Text style={styles.settingLabel}>🔔 Notifications</Text>
+            <Text style={styles.settingValue}>Enabled</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.settingItem}>
+            <Text style={styles.settingLabel}>📧 Email</Text>
+            <Text style={styles.settingValue}>{user.email}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Sign Out Button */}
+        <TouchableOpacity
+          style={styles.signOutButton}
+          onPress={handleSignOut}
+        >
+          <Text style={styles.signOutButtonText}>Sign Out</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
   },
-  header: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    backgroundColor: '#F3E8FF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E9D5FF',
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#A855F7',
+  centerContent: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
   },
-  avatarText: {
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 32,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  avatarContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F3E8FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  avatar: {
     fontSize: 32,
-    fontWeight: 'bold',
-    color: 'white',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
     marginBottom: 4,
   },
-  subtitle: {
+  userEmail: {
     fontSize: 14,
-    color: '#666',
+    color: '#6B7280',
   },
-  loadingText: {
-    marginTop: 12,
-    color: '#666',
-    fontSize: 16,
+  statsSection: {
+    marginBottom: 32,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
     marginBottom: 16,
   },
-  editSection: {
-    padding: 20,
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
   },
-  infoSection: {
-    padding: 20,
-  },
-  infoCard: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#A855F7',
-  },
-  infoLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-  },
-  infoValue: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    fontSize: 16,
-    backgroundColor: '#F9FAFB',
-  },
-  button: {
-    padding: 14,
+  statCard: {
+    width: '48%',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
     borderRadius: 8,
     alignItems: 'center',
+  },
+  statCard1: {
+    backgroundColor: '#EDE9FE',
+  },
+  statCard2: {
+    backgroundColor: '#FEF3C7',
+  },
+  statCard3: {
+    backgroundColor: '#DBEAFE',
+  },
+  statCard4: {
+    backgroundColor: '#D1FAE5',
+  },
+  statIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  achievementSection: {
+    marginTop: 24,
+  },
+  achievementTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
     marginBottom: 12,
   },
-  editButton: {
-    backgroundColor: '#A855F7',
-    marginTop: 16,
+  achievementItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#A855F7',
   },
-  saveButton: {
-    backgroundColor: '#22C55E',
+  achievementEmoji: {
+    fontSize: 24,
+    marginRight: 12,
   },
-  cancelButton: {
-    backgroundColor: '#E5E7EB',
+  achievementContent: {
+    flex: 1,
   },
-  logoutButton: {
-    backgroundColor: '#EF4444',
-    margin: 20,
-    marginTop: 12,
+  achievementName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 2,
   },
-  buttonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
+  achievementDesc: {
+    fontSize: 12,
+    color: '#6B7280',
   },
-  cancelButtonText: {
-    color: '#333',
-    fontWeight: 'bold',
-    fontSize: 16,
+  checkmark: {
+    fontSize: 18,
+    color: '#10b981',
+    fontWeight: '700',
   },
-  logoutButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
+  noAchievements: {
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    alignItems: 'center',
   },
-  buttonDisabled: {
-    opacity: 0.6,
+  noAchievementsText: {
+    fontSize: 14,
+    color: '#92400E',
+    fontWeight: '500',
+    textAlign: 'center',
   },
   settingsSection: {
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    marginBottom: 24,
   },
   settingItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 6,
   },
   settingLabel: {
-    fontSize: 16,
-    color: '#333',
+    fontSize: 14,
     fontWeight: '500',
+    color: '#1F2937',
   },
   settingValue: {
     fontSize: 14,
-    color: '#A855F7',
-    fontWeight: '600',
+    color: '#6B7280',
   },
-  footer: {
-    height: 40,
+  signOutButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 6,
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  signOutButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  noUserText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 });

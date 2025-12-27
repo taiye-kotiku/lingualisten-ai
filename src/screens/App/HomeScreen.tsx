@@ -101,7 +101,7 @@ export default function HomeScreen({ navigation }: any) {
     try {
       setLoading(true);
 
-            // Load recent activities
+      // Load recent activities
       const activities = await recentActivityService.getRecentActivities(user.id, 5);
       setRecentActivities(activities);
 
@@ -135,15 +135,16 @@ export default function HomeScreen({ navigation }: any) {
   };
 
   const handlePracticeNow = () => {
-    // Log the activity
-    if (user) {
-      recentActivityService.logActivity(
-        user.id,
-        'practice',
-        undefined,
-        { screen: 'home' }
-      );
+    // Check if user is authenticated
+    if (!user) {
+      alert('Please log in to practice');
+      return;
     }
+
+    // Log the activity - only 2 parameters (user.id and activity type)
+    recentActivityService.logActivity(user.id, 'practice');
+
+    // Navigate to practice screen
     navigation.navigate('VoicePractice');
   };
 

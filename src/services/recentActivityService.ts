@@ -1,49 +1,73 @@
-import { supabase } from './supabase.service';
+import { supabase } from './supabaseClient';
 
-interface ActivityLog {
-  id: string;
-  user_id: string;
-  activity_type: 'view' | 'practice' | 'learn' | 'review';
-  phrase_id?: string;
-  timestamp: string;
-  details?: any;
-}
-
+/**
+ * Recent Activity Service - Track and fetch user activities
+ * Includes proper authentication checks
+ */
 export const recentActivityService = {
-  // Log a new activity
+  /**
+   * Log a user activity - only if user is authenticated
+   */
   async logActivity(
-    userId: string,
-    activityType: 'view' | 'practice' | 'learn' | 'review',
-    phraseId?: string,
-    details?: any
+    userId: string | null | undefined,
+    activityType: 'view' | 'practice' | 'complete',
+    phraseId?: string
   ) {
     try {
-      const { data, error } = await supabase
+      // Check if user is authenticated
+      if (!userId) {
+        console.warn('Cannot log activity: user not authenticated');
+        return false;
+      }
+
+      if (!supabase) {
+        console.error('Supabase not initialized');
+        return false;
+      }
+
+      // Only insert required fields, make phrase_id optional
+      const insertData: any = {
+        user_id: userId,
+        activity_type: activityType,
+      };
+
+      // Only add phrase_id if provided
+      if (phraseId) {
+        insertData.phrase_id = phraseId;
+      }
+
+      const { error } = await supabase
         .from('user_activity')
-        .insert({
-          user_id: userId,
-          activity_type: activityType,
-          phrase_id: phraseId,
-          details: details || {},
-          created_at: new Date().toISOString(),
-        })
-        .select();
+        .insert(insertData);
 
       if (error) {
         console.error('Log activity error:', error);
-        return null;
+        return false;
       }
 
-      return data?.[0] || null;
+      return true;
     } catch (error) {
-      console.error('Log activity error:', error);
-      return null;
+      console.error('Activity log error:', error);
+      return false;
     }
   },
 
-  // Get recent activities for a user
-  async getRecentActivities(userId: string, limit: number = 10) {
+  /**
+   * Get recent activities for a user (without joins)
+   */
+  async getRecentActivities(userId: string | null | undefined, limit: number = 5) {
     try {
+      if (!userId) {
+        console.warn('Cannot fetch activities: user not authenticated');
+        return [];
+      }
+
+      if (!supabase) {
+        console.error('Supabase not initialized');
+        return [];
+      }
+
+      // Simple query without joins - no foreign key relationships
       const { data, error } = await supabase
         .from('user_activity')
         .select('*')
@@ -52,7 +76,7 @@ export const recentActivityService = {
         .limit(limit);
 
       if (error) {
-        console.error('Get recent activities error:', error);
+        console.error('Error fetching activities:', error);
         return [];
       }
 
@@ -63,116 +87,103 @@ export const recentActivityService = {
     }
   },
 
-  // Get activities by type
-  async getActivitiesByType(
-    userId: string,
-    activityType: 'view' | 'practice' | 'learn' | 'review',
-    limit: number = 10
-  ) {
+  /**
+   * Get activity statistics for a user
+   */
+  async getActivityStats(userId: string | null | undefined) {
     try {
-      const { data, error } = await supabase
-        .from('user_activity')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('activity_type', activityType)
-        .order('created_at', { ascending: false })
-        .limit(limit);
-
-      if (error) {
-        console.error('Get activities by type error:', error);
-        return [];
+      if (!userId) {
+        console.warn('Cannot fetch stats: user not authenticated');
+        return {
+          totalActivities: 0,
+          practiceCount: 0,
+          viewCount: 0,
+          completeCount: 0,
+        };
       }
 
-      return data || [];
-    } catch (error) {
-      console.error('Get activities by type error:', error);
-      return [];
-    }
-  },
-
-  // Get activities for a specific phrase
-  async getActivitiesForPhrase(userId: string, phraseId: string) {
-    try {
-      const { data, error } = await supabase
-        .from('user_activity')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('phrase_id', phraseId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Get phrase activities error:', error);
-        return [];
+      if (!supabase) {
+        console.error('Supabase not initialized');
+        return {
+          totalActivities: 0,
+          practiceCount: 0,
+          viewCount: 0,
+          completeCount: 0,
+        };
       }
 
-      return data || [];
-    } catch (error) {
-      console.error('Get phrase activities error:', error);
-      return [];
-    }
-  },
-
-  // Get activity statistics
-  async getActivityStats(userId: string) {
-    try {
       const { data, error } = await supabase
         .from('user_activity')
         .select('activity_type')
         .eq('user_id', userId);
 
       if (error) {
-        console.error('Get activity stats error:', error);
+        console.error('Error fetching activity stats:', error);
         return {
-          total: 0,
-          view: 0,
-          practice: 0,
-          learn: 0,
-          review: 0,
+          totalActivities: 0,
+          practiceCount: 0,
+          viewCount: 0,
+          completeCount: 0,
         };
       }
 
-      const stats = {
-        total: data?.length || 0,
-        view: data?.filter((a: any) => a.activity_type === 'view').length || 0,
-        practice: data?.filter((a: any) => a.activity_type === 'practice').length || 0,
-        learn: data?.filter((a: any) => a.activity_type === 'learn').length || 0,
-        review: data?.filter((a: any) => a.activity_type === 'review').length || 0,
-      };
+      const activities = data || [];
+      const totalActivities = activities.length;
+      const practiceCount = activities.filter(
+        (a: any) => a.activity_type === 'practice'
+      ).length;
+      const viewCount = activities.filter(
+        (a: any) => a.activity_type === 'view'
+      ).length;
+      const completeCount = activities.filter(
+        (a: any) => a.activity_type === 'complete'
+      ).length;
 
-      return stats;
-    } catch (error) {
-      console.error('Get activity stats error:', error);
       return {
-        total: 0,
-        view: 0,
-        practice: 0,
-        learn: 0,
-        review: 0,
+        totalActivities,
+        practiceCount,
+        viewCount,
+        completeCount,
+      };
+    } catch (error) {
+      console.error('Activity stats error:', error);
+      return {
+        totalActivities: 0,
+        practiceCount: 0,
+        viewCount: 0,
+        completeCount: 0,
       };
     }
   },
 
-  // Clear old activities (older than days)
-  async clearOldActivities(userId: string, daysOld: number = 30) {
+  /**
+   * Clear activities for a user (useful for testing)
+   */
+  async clearActivities(userId: string | null | undefined) {
     try {
-      const date = new Date();
-      date.setDate(date.getDate() - daysOld);
-      const isoDate = date.toISOString();
+      if (!userId) {
+        console.warn('Cannot clear activities: user not authenticated');
+        return false;
+      }
+
+      if (!supabase) {
+        console.error('Supabase not initialized');
+        return false;
+      }
 
       const { error } = await supabase
         .from('user_activity')
         .delete()
-        .eq('user_id', userId)
-        .lt('created_at', isoDate);
+        .eq('user_id', userId);
 
       if (error) {
-        console.error('Clear old activities error:', error);
+        console.error('Error clearing activities:', error);
         return false;
       }
 
       return true;
     } catch (error) {
-      console.error('Clear old activities error:', error);
+      console.error('Clear activities error:', error);
       return false;
     }
   },
