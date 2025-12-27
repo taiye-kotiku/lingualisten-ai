@@ -11,6 +11,21 @@ import {
 import { Audio } from 'expo-av';
 import geminiService from '../../services/ai/gemini.service';
 
+// Export the feedback interface so it can be imported elsewhere
+export interface VoicePracticeFeedback {
+  isCorrect: boolean;
+  accuracy: number;
+  userPhrase: string;
+  correctPhrase: string;
+  pronunciation: string;
+  toneCorrections?: string;
+  grammarNotes?: string;
+  encouragement: string;
+  tips: string;
+  exampleUsage?: string;
+  keyPoints: string[];
+}
+
 interface VoicePracticeCardProps {
   phrase: {
     id: string;
@@ -20,12 +35,12 @@ interface VoicePracticeCardProps {
     category: string;
   };
   userId: string;
-  onFeedback?: (feedback: any) => void;
+  onFeedback?: (feedback: VoicePracticeFeedback) => void;
 }
 
 interface FeedbackState {
   loading: boolean;
-  feedback: any | null;
+  feedback: VoicePracticeFeedback | null;
   error: string | null;
   isCorrect: boolean | null;
 }
@@ -49,11 +64,11 @@ export const VoicePracticeCard: React.FC<VoicePracticeCardProps> = ({
     try {
       await Audio.requestPermissionsAsync();
       const newRecording = new Audio.Recording();
-      
+
       await newRecording.prepareToRecordAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
-      
+
       await newRecording.startAsync();
       setRecording(newRecording);
       setIsRecording(true);
@@ -62,7 +77,7 @@ export const VoicePracticeCard: React.FC<VoicePracticeCardProps> = ({
       console.error('Recording error:', error);
       setFeedbackState(prev => ({
         ...prev,
-        error: 'Failed to start recording'
+        error: 'Failed to start recording',
       }));
     }
   };
@@ -74,7 +89,7 @@ export const VoicePracticeCard: React.FC<VoicePracticeCardProps> = ({
     try {
       setIsRecording(false);
       setFeedbackState(prev => ({ ...prev, loading: true }));
-      
+
       await recording.stopAndUnloadAsync();
 
       // For now, use a mock transcription
@@ -166,17 +181,19 @@ export const VoicePracticeCard: React.FC<VoicePracticeCardProps> = ({
 
       {/* Feedback section */}
       {feedbackState.feedback && (
-        <View style={[
-          styles.feedbackBox,
-          feedbackState.isCorrect ? styles.feedbackSuccess : styles.feedbackNeeds
-        ]}>
+        <View
+          style={[
+            styles.feedbackBox,
+            feedbackState.isCorrect ? styles.feedbackSuccess : styles.feedbackNeeds,
+          ]}
+        >
           <View style={styles.accuracySection}>
             <Text style={styles.accuracyLabel}>Accuracy</Text>
             <View style={styles.accuracyBar}>
               <View
                 style={[
                   styles.accuracyFill,
-                  { width: `${feedbackState.feedback.accuracy}%` }
+                  { width: `${feedbackState.feedback.accuracy}%` },
                 ]}
               />
             </View>
@@ -210,10 +227,7 @@ export const VoicePracticeCard: React.FC<VoicePracticeCardProps> = ({
             </View>
           )}
 
-          <TouchableOpacity
-            onPress={clearFeedback}
-            style={styles.clearButton}
-          >
+          <TouchableOpacity onPress={clearFeedback} style={styles.clearButton}>
             <Text style={styles.clearButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
@@ -364,3 +378,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export default VoicePracticeCard;

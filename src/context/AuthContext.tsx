@@ -1,81 +1,91 @@
-import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
-import { User, onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth, db } from '../services/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+import { supabase } from '../services/supabase.service';
 
-interface UserProfile {
-    name: string;
-    email: string;
+// Define the UserProfile interface with username field
+export interface UserProfile {
+  id: string;
+  email: string;
+  username?: string;
 }
 
-interface AuthContextType {
-    user: User | null;
-    profile: UserProfile | null;
-    isLoading: boolean;
-    logout: () => Promise<void>;
+export interface AuthContextType {
+  user: any | null;
+  profile: UserProfile | null;
+  loading: boolean;
+  logout: () => Promise<void>;
 }
+
+import { createContext, useContext, ReactNode } from 'react';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-    const [user, setUser] = useState<User | null>(null);
-    const [profile, setProfile] = useState<UserProfile | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<any | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        let profileUnsub: (() => void) | null = null;
-
-        const unsubAuth = onAuthStateChanged(auth, (u) => {
-            setUser(u);
-
-            // Cleanup previous profile listener
-            if (profileUnsub) {
-                profileUnsub();
-                profileUnsub = null;
-            }
-
-            if (u) {
-                // Listen to Firestore profile in real-time
-                profileUnsub = onSnapshot(
-                    doc(db, 'users', u.uid),
-                    (snap) => {
-                        if (snap.exists()) {
-                            setProfile(snap.data() as UserProfile);
-                        } else if (u.displayName) {
-                            // Fallback to auth profile if Firestore doc doesn't exist
-                            setProfile({ name: u.displayName, email: u.email || '' });
-                        }
-                    },
-                    (err) => console.log('Profile listener error', err)
-                );
-            } else {
-                setProfile(null);
-            }
-
-            setIsLoading(false);
+  useEffect(() => {
+    // Check if user is already logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser(session.user);
+        // Set profile from auth user data directly
+        setProfile({
+          id: session.user.id,
+          email: session.user.email || '',
+          username: session.user.user_metadata?.username || session.user.email?.split('@')[0],
         });
+      }
+      setLoading(false);
+    });
 
-        return () => {
-            unsubAuth();
-            if (profileUnsub) profileUnsub();
-        };
-    }, []);
-
-    const logout = async () => {
-        await signOut(auth);
-    };
-
-    return (
-        <AuthContext.Provider value={{ user, profile, isLoading, logout }}>
-            {children}
-        </AuthContext.Provider>
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          setUser(session.user);
+          // Set profile from auth user data directly (don't query database)
+          setProfile({
+            id: session.user.id,
+            email: session.user.email || '',
+            username: session.user.user_metadata?.username || session.user.email?.split('@')[0],
+          });
+        } else {
+          setUser(null);
+          setProfile(null);
+        }
+        setLoading(false);
+      }
     );
-};
 
-export const useAuth = () => {
-    const context = useContext(AuthContext);
-    if (context === undefined) {
-        throw new Error('useAuth must be used within an AuthProvider');
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, []);
+
+  const logout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setUser(null);
+      setProfile(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+      throw error;
     }
-    return context;
-}; 
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, profile, loading, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}

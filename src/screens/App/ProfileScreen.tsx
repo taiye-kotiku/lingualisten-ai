@@ -1,479 +1,354 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, TextInput, Keyboard } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { Feather } from '@expo/vector-icons';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  TextInput,
+} from 'react-native';
 import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
-import { useToast } from '../../context/ToastContext';
-import { getTheme } from '../../constants/theme';
-import CustomSwitch from '../../components/common/CustomSwitch';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../types/navigation';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-import { updateProfile } from 'firebase/auth';
-import StyledButton from '../../components/common/StyledButton';
-import ConfirmModal from '../../components/common/ConfirmModal';
-import { useUsage } from '../../context/UsageContext';
-import TargetPickerModal from '../../components/common/TargetPickerModal';
+import { supabase } from '../../services/supabase.service';
 
-type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+export default function ProfileScreen({ navigation }: any) {
+  const { user, profile, logout } = useAuth();
+  const [isEditing, setIsEditing] = useState(false);
+  const [username, setUsername] = useState(profile?.name || '');
+  const [email, setEmail] = useState(profile?.email || '');
+  const [loading, setLoading] = useState(false);
 
-const ProfileScreen = () => {
-    const navigation = useNavigation<ProfileScreenNavigationProp>();
-    const { logout, profile, user } = useAuth();
-    const { isDark, toggleTheme } = useTheme();
-    const { showToast } = useToast();
-    const theme = getTheme(isDark);
+  useEffect(() => {
+    if (profile) {
+      setUsername(profile.name || '');
+      setEmail(profile.email || '');
+    }
+  }, [profile]);
 
-    const [isEditingName, setIsEditingName] = useState(false);
-    const [newName, setNewName] = useState(profile?.name || '');
-    const [isUpdating, setIsUpdating] = useState(false);
-    const [showLogoutModal, setShowLogoutModal] = useState(false);
-    const [showTargetModal, setShowTargetModal] = useState(false);
+  const handleUpdateProfile = async () => {
+    if (!username.trim()) {
+      Alert.alert('Error', 'Username cannot be empty');
+      return;
+    }
 
-    const { secondsToday, targetMinutes, setTargetMinutes } = useUsage();
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          username: username.trim(),
+          email: email,
+        })
+        .eq('id', user?.id);
 
-    const minutesToday = Math.floor(secondsToday / 60);
-    const reachedTarget = minutesToday >= targetMinutes;
+      if (error) {
+        Alert.alert('Error', error.message);
+      } else {
+        Alert.alert('Success', 'Profile updated successfully!');
+        setIsEditing(false);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update profile');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const handleChangeTarget = () => {
-        setShowTargetModal(true);
-    };
+  const handleLogout = async () => {
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', onPress: () => {}, style: 'cancel' },
+      {
+        text: 'Logout',
+        onPress: async () => {
+          try {
+            await logout();
+            navigation.replace('Auth');
+          } catch (error: any) {
+            Alert.alert('Error', error.message || 'Failed to logout');
+          }
+        },
+        style: 'destructive',
+      },
+    ]);
+  };
 
-    const userName = profile?.name || 'User';
-    const userEmail = profile?.email || '';
-    const avatarLetter = userName.charAt(0).toUpperCase();
-
-    const handleLogout = () => {
-        setShowLogoutModal(true);
-    };
-
-    const confirmLogout = async () => {
-        setShowLogoutModal(false);
-        await logout();
-    };
-
-    const handleEditProfile = () => {
-        navigation.navigate('EditProfile');
-    };
-
-    const handleSupport = () => {
-        navigation.navigate('HelpSupport');
-    };
-
-    const handlePrivacy = () => {
-        navigation.navigate('PrivacyPolicy');
-    };
-
-    const handleStartEditing = () => {
-        setNewName(profile?.name || '');
-        setIsEditingName(true);
-    };
-
-    const handleCancelEditing = () => {
-        setNewName(profile?.name || '');
-        setIsEditingName(false);
-        Keyboard.dismiss();
-    };
-
-    const handleUpdateName = async () => {
-        if (!newName.trim() || !user) return;
-
-        // Dismiss keyboard before processing
-        Keyboard.dismiss();
-
-        setIsUpdating(true);
-        try {
-            // Update Firestore profile first (this is what the UI shows)
-            await updateDoc(doc(db, 'users', user.uid), {
-                name: newName.trim()
-            });
-
-            // Update Firebase Auth profile in background (no await)
-            updateProfile(user, { displayName: newName.trim() }).catch(console.error);
-
-            setIsEditingName(false);
-            showToast('Your name has been updated successfully.', { type: 'success' });
-        } catch (error) {
-            showToast('Failed to update your name. Please try again.', { type: 'error' });
-        } finally {
-            setIsUpdating(false);
-        }
-    };
-
-    const SettingItem = ({
-        icon,
-        title,
-        subtitle,
-        onPress,
-        showArrow = true,
-        rightComponent,
-        isLast = false
-    }: {
-        icon: keyof typeof Feather.glyphMap;
-        title: string;
-        subtitle?: string;
-        onPress?: () => void;
-        showArrow?: boolean;
-        rightComponent?: React.ReactNode;
-        isLast?: boolean;
-    }) => {
-        const itemStyle = [
-            styles.settingItem,
-            { borderBottomColor: theme.COLORS.border },
-            isLast && { borderBottomWidth: 0 }
-        ];
-
-        if (rightComponent) {
-            return (
-                <View style={itemStyle}>
-                    <View style={styles.settingLeft}>
-                        <View style={[styles.settingIcon, { backgroundColor: theme.COLORS.background }]}>
-                            <Feather name={icon} size={20} color={theme.COLORS.textSecondary} />
-                        </View>
-                        <View style={styles.settingContent}>
-                            <Text style={[styles.settingTitle, { color: theme.COLORS.textPrimary }]}>{title}</Text>
-                            {subtitle && <Text style={[styles.settingSubtitle, { color: theme.COLORS.textSecondary }]}>{subtitle}</Text>}
-                        </View>
-                    </View>
-                    <View style={styles.settingRight}>
-                        {rightComponent}
-                    </View>
-                </View>
-            );
-        }
-
-        return (
-            <TouchableOpacity style={itemStyle} onPress={onPress} disabled={!onPress}>
-                <View style={styles.settingLeft}>
-                    <View style={[styles.settingIcon, { backgroundColor: theme.COLORS.background }]}>
-                        <Feather name={icon} size={20} color={theme.COLORS.textSecondary} />
-                    </View>
-                    <View style={styles.settingContent}>
-                        <Text style={[styles.settingTitle, { color: theme.COLORS.textPrimary }]}>{title}</Text>
-                        {subtitle && <Text style={[styles.settingSubtitle, { color: theme.COLORS.textSecondary }]}>{subtitle}</Text>}
-                    </View>
-                </View>
-                <View style={styles.settingRight}>
-                    {showArrow && (
-                        <Feather name="chevron-right" size={20} color={theme.COLORS.textSecondary} />
-                    )}
-                </View>
-            </TouchableOpacity>
-        );
-    };
-
+  if (!user || !profile) {
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.COLORS.background }]}>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                {/* Profile Header */}
-                <View style={[styles.profileHeader, { backgroundColor: theme.COLORS.background }]}>
-                    <View style={[styles.avatarContainer, { backgroundColor: theme.COLORS.primary }]}>
-                        <Text style={[styles.avatarText, { color: theme.COLORS.background }]}>{avatarLetter}</Text>
-                    </View>
-                    <View style={styles.profileInfo}>
-                        {isEditingName ? (
-                            <View style={styles.editingContainer}>
-                                <TextInput
-                                    style={[styles.nameInput, {
-                                        color: theme.COLORS.textPrimary,
-                                        borderColor: theme.COLORS.border,
-                                        backgroundColor: theme.COLORS.lightGray
-                                    }]}
-                                    value={newName}
-                                    onChangeText={setNewName}
-                                    placeholder="Enter your full name"
-                                    placeholderTextColor={theme.COLORS.textSecondary}
-                                    autoFocus
-                                    returnKeyType="done"
-                                    onSubmitEditing={handleUpdateName}
-                                />
-                                <View style={styles.editingButtons}>
-                                    <TouchableOpacity
-                                        style={[styles.editActionButton, styles.cancelEditButton, { borderColor: theme.COLORS.border }]}
-                                        onPress={handleCancelEditing}
-                                        disabled={isUpdating}
-                                    >
-                                        <Feather name="x" size={16} color={theme.COLORS.textSecondary} />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={[styles.editActionButton, styles.saveEditButton, { backgroundColor: theme.COLORS.primary }]}
-                                        onPress={handleUpdateName}
-                                        disabled={!newName.trim() || newName.trim() === profile?.name || isUpdating}
-                                    >
-                                        {isUpdating ? (
-                                            <Feather name="loader" size={16} color="#fff" />
-                                        ) : (
-                                            <Feather name="check" size={16} color="#fff" />
-                                        )}
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        ) : (
-                            <>
-                                <Text style={[styles.userName, { color: theme.COLORS.textPrimary }]}>{userName}</Text>
-                                {userEmail ? <Text style={[styles.userEmail, { color: theme.COLORS.textSecondary }]}>{userEmail}</Text> : null}
-                            </>
-                        )}
-                    </View>
-                    {!isEditingName && (
-                        <TouchableOpacity style={styles.editButton} onPress={handleStartEditing}>
-                            <Feather name="edit-2" size={18} color={theme.COLORS.primary} />
-                        </TouchableOpacity>
-                    )}
-                </View>
-
-                {/* Appearance Settings */}
-                <View style={styles.settingsSection}>
-                    <Text style={[styles.sectionTitle, { color: theme.COLORS.textPrimary }]}>Appearance</Text>
-                    <View style={[styles.settingsCard, { backgroundColor: theme.COLORS.lightGray, borderColor: theme.COLORS.border }]}>
-                        <SettingItem
-                            icon="moon"
-                            title="Dark Mode"
-                            subtitle="Switch theme"
-                            showArrow={false}
-                            isLast={true}
-                            rightComponent={
-                                <CustomSwitch
-                                    value={isDark}
-                                    onValueChange={toggleTheme}
-                                />
-                            }
-                        />
-                    </View>
-                </View>
-
-                {/* Usage Settings */}
-                <View style={styles.settingsSection}>
-                    <Text style={[styles.sectionTitle, { color: theme.COLORS.textPrimary }]}>Usage</Text>
-                    <View style={[styles.settingsCard, { backgroundColor: theme.COLORS.lightGray, borderColor: theme.COLORS.border }]}>
-                        <SettingItem
-                            icon="clock"
-                            title="Daily Target"
-                            subtitle={`${minutesToday}/${targetMinutes} minutes`}
-                            onPress={handleChangeTarget}
-                        />
-                        <SettingItem
-                            icon="check-circle"
-                            title="Target Reached"
-                            subtitle={reachedTarget ? "Yes" : "No"}
-                            showArrow={false}
-                            isLast={true}
-                        />
-                    </View>
-                </View>
-
-                {/* Support Section */}
-                <View style={styles.supportSection}>
-                    <Text style={[styles.sectionTitle, { color: theme.COLORS.textPrimary }]}>Support</Text>
-                    <View style={[styles.settingsCard, { backgroundColor: theme.COLORS.lightGray, borderColor: theme.COLORS.border }]}>
-                        <SettingItem
-                            icon="help-circle"
-                            title="Help & Support"
-                            subtitle="Get help with the app"
-                            onPress={handleSupport}
-                        />
-                        <SettingItem
-                            icon="shield"
-                            title="Privacy Policy"
-                            subtitle="How we protect your data"
-                            onPress={handlePrivacy}
-                        />
-                        <SettingItem
-                            icon="info"
-                            title="About"
-                            subtitle="App version and info"
-                            onPress={() => navigation.navigate('About')}
-                            isLast={true}
-                        />
-                    </View>
-                </View>
-
-                {/* Logout Button */}
-                <View style={styles.logoutSection}>
-                    <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-                        <Text style={styles.logoutButtonText}>Logout</Text>
-                    </TouchableOpacity>
-                </View>
-            </ScrollView>
-            {/* Logout confirmation modal */}
-            <ConfirmModal
-                visible={showLogoutModal}
-                title="Logout"
-                message="Are you sure you want to logout?"
-                confirmLabel="Logout"
-                cancelLabel="Cancel"
-                type="destructive"
-                onConfirm={confirmLogout}
-                onCancel={() => setShowLogoutModal(false)}
-            />
-            <TargetPickerModal
-                visible={showTargetModal}
-                selectedMinutes={targetMinutes}
-                onSelect={async (m) => {
-                    await setTargetMinutes(m);
-                }}
-                onClose={() => setShowTargetModal(false)}
-            />
-        </SafeAreaView>
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#A855F7" />
+        <Text style={styles.loadingText}>Loading profile...</Text>
+      </View>
     );
-};
+  }
+
+  return (
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>
+            {username?.charAt(0).toUpperCase() || 'U'}
+          </Text>
+        </View>
+        <Text style={styles.title}>{username}</Text>
+        <Text style={styles.subtitle}>{email}</Text>
+      </View>
+
+      {isEditing ? (
+        <View style={styles.editSection}>
+          <Text style={styles.sectionTitle}>Edit Profile</Text>
+
+          <Text style={styles.label}>Username</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Username"
+            value={username}
+            onChangeText={setUsername}
+            editable={!loading}
+          />
+
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            editable={!loading}
+          />
+
+          <TouchableOpacity
+            style={[styles.button, styles.saveButton, loading && styles.buttonDisabled]}
+            onPress={handleUpdateProfile}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={styles.buttonText}>Save Changes</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.cancelButton]}
+            onPress={() => {
+              setIsEditing(false);
+              setUsername(profile.name || '');
+              setEmail(profile.email || '');
+            }}
+            disabled={loading}
+          >
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.infoSection}>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoLabel}>Username</Text>
+            <Text style={styles.infoValue}>{username}</Text>
+          </View>
+
+          <View style={styles.infoCard}>
+            <Text style={styles.infoLabel}>Email</Text>
+            <Text style={styles.infoValue}>{email}</Text>
+          </View>
+
+          <View style={styles.infoCard}>
+            <Text style={styles.infoLabel}>User ID</Text>
+            <Text style={styles.infoValue}>{user.id.substring(0, 12)}...</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.button, styles.editButton]}
+            onPress={() => setIsEditing(true)}
+          >
+            <Text style={styles.buttonText}>Edit Profile</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <View style={styles.settingsSection}>
+        <Text style={styles.sectionTitle}>Settings</Text>
+
+        <TouchableOpacity style={styles.settingItem}>
+          <Text style={styles.settingLabel}>Learning Level</Text>
+          <Text style={styles.settingValue}>Beginner</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.settingItem}>
+          <Text style={styles.settingLabel}>Notifications</Text>
+          <Text style={styles.settingValue}>Enabled</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.settingItem}>
+          <Text style={styles.settingLabel}>Language</Text>
+          <Text style={styles.settingValue}>English</Text>
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity
+        style={[styles.button, styles.logoutButton]}
+        onPress={handleLogout}
+      >
+        <Text style={styles.logoutButtonText}>Logout</Text>
+      </TouchableOpacity>
+
+      <View style={styles.footer} />
+    </ScrollView>
+  );
+}
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    scrollContent: {
-        paddingBottom: 40,
-    },
-    profileHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingTop: 20,
-        paddingBottom: 24,
-    },
-    avatarContainer: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 16,
-    },
-    avatarText: {
-        fontSize: 24,
-        fontFamily: 'Inter-SemiBold',
-        fontWeight: '600',
-    },
-    profileInfo: {
-        flex: 1,
-    },
-    userName: {
-        fontSize: 20,
-        fontFamily: 'Nunito-SemiBold',
-        fontWeight: '600',
-        lineHeight: 26,
-    },
-    userEmail: {
-        fontSize: 14,
-        fontFamily: 'Inter-Regular',
-        marginTop: 2,
-        lineHeight: 18,
-    },
-    editButton: {
-        padding: 8,
-    },
-    settingsSection: {
-        paddingHorizontal: 20,
-        marginBottom: 32,
-    },
-    supportSection: {
-        paddingHorizontal: 20,
-        marginBottom: 32,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontFamily: 'Nunito-SemiBold',
-        fontWeight: '600',
-        marginBottom: 16,
-    },
-    settingsCard: {
-        borderRadius: 12,
-        borderWidth: 1,
-    },
-    settingItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 16,
-        borderBottomWidth: 1,
-    },
-    settingLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-    },
-    settingIcon: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
-    },
-    settingContent: {
-        flex: 1,
-    },
-    settingTitle: {
-        fontSize: 16,
-        fontFamily: 'Inter-Medium',
-        fontWeight: '500',
-    },
-    settingSubtitle: {
-        fontSize: 14,
-        fontFamily: 'Inter-Regular',
-        marginTop: 2,
-        lineHeight: 18,
-    },
-    settingRight: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    logoutSection: {
-        paddingHorizontal: 20,
-        marginTop: 20,
-    },
-    logoutButton: {
-        backgroundColor: 'transparent',
-        borderWidth: 2,
-        borderColor: '#EF4444',
-        paddingVertical: 16,
-        borderRadius: 12,
-        alignItems: 'center',
-        width: '100%',
-    },
-    logoutButtonText: {
-        fontSize: 16,
-        color: '#EF4444',
-        fontFamily: 'Inter-SemiBold',
-        fontWeight: '600',
-    },
-    editingContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-    },
-    editingButtons: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginLeft: 12,
-    },
-    editActionButton: {
-        width: 36,
-        height: 36,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderRadius: 8,
-    },
-    cancelEditButton: {
-        borderWidth: 1,
-        marginRight: 8,
-    },
-    saveEditButton: {
-        borderWidth: 0,
-    },
-    nameInput: {
-        flex: 1,
-        borderWidth: 1,
-        borderRadius: 12,
-        padding: 12,
-        fontSize: 16,
-        fontFamily: 'Inter-Regular',
-        minHeight: 44,
-    },
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  header: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    backgroundColor: '#F3E8FF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E9D5FF',
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#A855F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  avatarText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#666',
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#666',
+    fontSize: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+  },
+  editSection: {
+    padding: 20,
+  },
+  infoSection: {
+    padding: 20,
+  },
+  infoCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#A855F7',
+  },
+  infoLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  infoValue: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    fontSize: 16,
+    backgroundColor: '#F9FAFB',
+  },
+  button: {
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  editButton: {
+    backgroundColor: '#A855F7',
+    marginTop: 16,
+  },
+  saveButton: {
+    backgroundColor: '#22C55E',
+  },
+  cancelButton: {
+    backgroundColor: '#E5E7EB',
+  },
+  logoutButton: {
+    backgroundColor: '#EF4444',
+    margin: 20,
+    marginTop: 12,
+  },
+  buttonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  cancelButtonText: {
+    color: '#333',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  logoutButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  settingsSection: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  settingItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  settingLabel: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+  },
+  settingValue: {
+    fontSize: 14,
+    color: '#A855F7',
+    fontWeight: '600',
+  },
+  footer: {
+    height: 40,
+  },
 });
-
-export default ProfileScreen; 

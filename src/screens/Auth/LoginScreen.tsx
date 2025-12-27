@@ -1,141 +1,155 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { AuthNavigationProp } from '../../types/navigation';
-import { useTheme } from '../../context/ThemeContext';
-import { getTheme } from '../../constants/theme';
-import StyledTextInput from '../../components/common/StyledTextInput';
-import StyledButton from '../../components/common/StyledButton';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../../services/firebase';
-import { useToast } from '../../context/ToastContext';
+import {
+  View,
+  TextInput,
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+} from 'react-native';
+import { authService } from '../../services/supabase.service';
 
-const LoginScreen = () => {
-    const navigation = useNavigation<AuthNavigationProp>();
-    const { isDark } = useTheme();
-    const theme = getTheme(isDark);
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-    const { showToast } = useToast();
+export default function LoginScreen({ navigation }: any) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-    const handleLogin = async () => {
-        if (!email || !password) {
-            showToast('Please fill in all fields.', { type: 'error' });
-            return;
-        }
-        setIsLoading(true);
-        try {
-            await signInWithEmailAndPassword(auth, email, password);
-            // Navigation will be handled by the AuthContext listener
-        } catch (error: any) {
-            showToast(error.message, { type: 'error' });
-        } finally {
-            setIsLoading(false);
-        }
-    };
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
 
-    return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.COLORS.background }]}>
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={{ flex: 1 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-            >
-                <ScrollView
-                    contentContainerStyle={styles.scrollViewContent}
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
-                    bounces={false}
-                >
-                    <View style={styles.header}>
-                        <Text style={[styles.title, { color: theme.COLORS.textPrimary }]}>Welcome Back!</Text>
-                        <Text style={[styles.subtitle, { color: theme.COLORS.textSecondary }]}>Log in to continue your language journey.</Text>
-                    </View>
+    setLoading(true);
+    try {
+      const result = await authService.signIn(email, password);
+      
+      if (result.success) {
+        Alert.alert('Success', 'Logged in successfully!');
+        // Navigation will be handled by auth context
+        navigation.replace('Home');
+      }
+    } catch (error: any) {
+      Alert.alert('Login Failed', error.message || 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-                    <View style={styles.form}>
-                        <StyledTextInput
-                            placeholder="Email"
-                            value={email}
-                            onChangeText={setEmail}
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                        />
-                        <View style={{ height: 16 }} />
-                        <StyledTextInput
-                            placeholder="Password"
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry={!isPasswordVisible}
-                            rightIcon={isPasswordVisible ? 'eye' : 'eye-off'}
-                            onRightIconPress={() => setIsPasswordVisible(!isPasswordVisible)}
-                        />
-                        <TouchableOpacity onPress={() => navigation.navigate('PasswordRecovery')}>
-                            <Text style={[styles.forgotPasswordText, { color: theme.COLORS.primary }]}>Forgot Password?</Text>
-                        </TouchableOpacity>
-                    </View>
+  return (
+    <ScrollView style={styles.container}>
+      <View style={styles.content}>
+        <Text style={styles.title}>Welcome Back</Text>
+        <Text style={styles.subtitle}>Sign in to your account</Text>
 
-                    <View style={styles.footer}>
-                        <StyledButton title="Login" onPress={handleLogin} loading={isLoading} />
-                        <TouchableOpacity onPress={() => navigation.navigate('SignUp')} disabled={isLoading}>
-                            <Text style={[styles.signUpText, { color: theme.COLORS.textSecondary }]}>
-                                Don't have an account? <Text style={[styles.signUpLink, { color: theme.COLORS.primary }]}>Sign Up</Text>
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
-    );
-};
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          editable={!loading}
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          editable={!loading}
+        />
+
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleLogin}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.buttonText}>Login</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => navigation.navigate('PasswordRecovery')}>
+          <Text style={styles.link}>Forgot password?</Text>
+        </TouchableOpacity>
+
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Don't have an account? </Text>
+          <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
+            <Text style={styles.footerLink}>Sign Up</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    scrollViewContent: {
-        flexGrow: 1,
-        justifyContent: 'center',
-        paddingHorizontal: 20,
-    },
-    header: {
-        alignItems: 'center',
-        marginBottom: 48,
-    },
-    title: {
-        fontSize: 30,
-        fontFamily: 'Nunito-Bold',
-        lineHeight: 36,
-        marginBottom: 8,
-    },
-    subtitle: {
-        fontSize: 14,
-        fontFamily: 'Inter-Regular',
-        lineHeight: 20,
-    },
-    form: {
-        marginBottom: 32,
-    },
-    footer: {
-        alignItems: 'center',
-    },
-    signUpText: {
-        fontSize: 13,
-        fontFamily: 'Inter-Regular',
-        lineHeight: 18,
-        marginTop: 24,
-    },
-    signUpLink: {
-        fontFamily: 'Inter-Medium',
-    },
-    forgotPasswordText: {
-        fontSize: 12,
-        fontFamily: 'Inter-Medium',
-        lineHeight: 16,
-        textAlign: 'right',
-        marginTop: 12,
-    },
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  content: {
+    padding: 20,
+    paddingTop: 60,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 32,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    fontSize: 16,
+    backgroundColor: '#F9FAFB',
+  },
+  button: {
+    backgroundColor: '#A855F7',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  link: {
+    color: '#A855F7',
+    textAlign: 'center',
+    marginTop: 16,
+    fontWeight: '600',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 32,
+  },
+  footerText: {
+    color: '#666',
+  },
+  footerLink: {
+    color: '#A855F7',
+    fontWeight: 'bold',
+  },
 });
-
-export default LoginScreen;
