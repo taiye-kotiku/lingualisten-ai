@@ -47,22 +47,22 @@ export default function SearchScreen({ navigation }: any) {
     }
   };
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
+  const handleSearch = async (query: string) => {
+  setSearchQuery(query);
+  if (!query.trim()) {
+    setSearchResults([]);
+    return;
+  }
 
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    setSearching(true);
-    const results = allPhrases.filter(
-      (phrase) =>
-        phrase.phrase.toLowerCase().includes(query.toLowerCase()) ||
-        phrase.translation.toLowerCase().includes(query.toLowerCase())
-    );
+  setSearching(true);
+  try {
+    const results = await phrasesService.searchPhrases(query);
     setSearchResults(results);
+  } catch (error) {
+    console.error('Search error:', error);
+  } finally {
     setSearching(false);
+  }
   };
 
   const handleResultPress = (result: SearchResult) => {

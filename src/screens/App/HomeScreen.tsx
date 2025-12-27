@@ -101,7 +101,7 @@ export default function HomeScreen({ navigation }: any) {
     try {
       setLoading(true);
 
-      // Load recent activities
+            // Load recent activities
       const activities = await recentActivityService.getRecentActivities(user.id, 5);
       setRecentActivities(activities);
 
