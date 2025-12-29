@@ -141,11 +141,13 @@ export default function HomeScreen({ navigation }: any) {
       return;
     }
 
-    // Log the activity - only 2 parameters (user.id and activity type)
+    // Log the activity
     recentActivityService.logActivity(user.id, 'practice');
 
-    // Navigate to practice screen
-    navigation.navigate('VoicePractice');
+    // Navigate to Flashcard Categories (ONLY navigation call)
+    navigation.navigate('Flashcard', {
+      screen: 'Categories',
+    });
   };
 
   const handleBrowsePhrases = () => {
@@ -157,6 +159,12 @@ export default function HomeScreen({ navigation }: any) {
       <View style={styles.container}>
         <ActivityIndicator size="large" color="#A855F7" />
         <Text style={styles.loadingText}>Loading your learning data...</Text>
+        <TouchableOpacity
+          style={styles.flashcardButton}
+          onPress={() => navigation.navigate('Flashcard', { screen: 'Categories' })}
+        >
+          <Text style={styles.buttonText}>📚 Learn Flashcards</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -191,7 +199,7 @@ export default function HomeScreen({ navigation }: any) {
           style={[styles.button, styles.primaryButton]}
           onPress={handlePracticeNow}
         >
-          <Text style={styles.buttonText}>🎤 Practice Now</Text>
+          <Text style={styles.buttonText2}>🎤 Practice Now</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -390,6 +398,19 @@ const styles = StyleSheet.create({
   emptyStateSubtext: {
     fontSize: 14,
     color: '#999',
+  },
+  flashcardButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  buttonText2: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   tipCard: {
     backgroundColor: '#FFFBEB',

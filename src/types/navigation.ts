@@ -23,6 +23,10 @@ export type RootStackParamList = {
     About: undefined;
     HowToUse: undefined;
     CategoryPhrases: { category: import('../constants/categories').CategoryId };
+    Flashcard: {
+    screen: 'Categories' | 'Practice';
+    categoryName?: string;
+  };
 };
 
 export type AuthNavigationProp = NativeStackNavigationProp<AuthStackParamList>;

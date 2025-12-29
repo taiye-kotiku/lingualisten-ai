@@ -18,6 +18,7 @@ import ProfileScreen from './src/screens/App/ProfileScreen';
 import BrowseScreen from './src/screens/App/BrowseScreen';
 import ContentDisplayScreen from './src/screens/App/ContentDisplayScreen';
 import VoicePracticeFeedback from './src/screens/App/VoicePracticeFeedback';
+import { FlashcardStack } from './src/navigation/FlashcardStack';
 
 // Dynamically import SearchScreen with fallback
 let SearchScreen: any;
@@ -179,17 +180,18 @@ function RootNavigator() {
       }}
     >
       {!user ? (
-        <Stack.Screen
-          name="Auth"
-          component={AuthStack}
-          options={{}}
-        />
+        <Stack.Screen name="Auth" component={AuthStack} />
       ) : (
-        <Stack.Screen
-          name="App"
-          component={AppTabNavigator}
-          options={{}}
-        />
+        <>
+          <Stack.Screen name="AppTabs" component={AppTabNavigator} />
+          <Stack.Screen 
+            name="Flashcard" 
+            component={FlashcardStack}
+            options={{
+              presentation: 'modal',
+            }}
+          />
+        </>
       )}
     </Stack.Navigator>
   );
